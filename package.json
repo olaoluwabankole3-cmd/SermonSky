@@ -11,7 +11,11 @@
     "build:web": "expo export --platform web",
     "typecheck": "tsc --noEmit",
     "deploy": "npm run build:web && wrangler deploy",
-    "preview:cf": "npm run build:web && wrangler dev"
+    "preview:cf": "npm run build:web && wrangler dev",
+    "db:create": "wrangler d1 create sermonsky-db --binding DB --update-config",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "check:worker": "npm run build:web && wrangler deploy --dry-run"
   },
   "dependencies": {
     "@expo/metro-runtime": "~57.0.15",
