@@ -31,7 +31,9 @@ import {
 import {
   getCurrentViewer,
   getMyChurchApplication,
+  getStudioAccess,
   logoutViewer,
+  type StudioAccess,
 } from "./src/api";
 import { colors, radii, spacing } from "./src/theme";
 
@@ -64,6 +66,10 @@ export default function App() {
   const [viewer, setViewer] = useState<PreviewViewer | null>(null);
   const [churchApplication, setChurchApplication] =
     useState<ChurchApplication | null>(null);
+  const [studioAccess, setStudioAccess] = useState<StudioAccess>({
+    hasAccess: false,
+    church: null,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -76,13 +82,23 @@ export default function App() {
         setViewer(currentViewer);
 
         if (currentViewer) {
-          const application = await getMyChurchApplication();
-          if (!cancelled) setChurchApplication(application);
+          const [application, access] = await Promise.all([
+            getMyChurchApplication(),
+            getStudioAccess(),
+          ]);
+          if (!cancelled) {
+            setChurchApplication(application);
+            setStudioAccess(access);
+          }
+        } else if (!cancelled) {
+          setChurchApplication(null);
+          setStudioAccess({ hasAccess: false, church: null });
         }
       } catch {
         if (!cancelled) {
           setViewer(null);
           setChurchApplication(null);
+          setStudioAccess({ hasAccess: false, church: null });
         }
       }
     };
@@ -94,16 +110,25 @@ export default function App() {
     };
   }, []);
 
-  const refreshChurchApplication = () => {
-    void getMyChurchApplication()
-      .then((application) => setChurchApplication(application))
-      .catch(() => setChurchApplication(null));
+  const refreshChurchContext = async () => {
+    try {
+      const [application, access] = await Promise.all([
+        getMyChurchApplication(),
+        getStudioAccess(),
+      ]);
+      setChurchApplication(application);
+      setStudioAccess(access);
+    } catch {
+      setChurchApplication(null);
+      setStudioAccess({ hasAccess: false, church: null });
+    }
   };
 
   const signOut = () => {
     void logoutViewer().finally(() => {
       setViewer(null);
       setChurchApplication(null);
+      setStudioAccess({ hasAccess: false, church: null });
     });
   };
 
@@ -133,6 +158,8 @@ export default function App() {
               <ProfileScreen
                 viewer={viewer}
                 churchApplication={churchApplication}
+                studioAccess={studioAccess}
+                onChurchReviewed={() => void refreshChurchContext()}
                 onCreateViewer={() =>
                   setAccountFlow({ kind: "viewer", mode: "signup" })
                 }
@@ -161,7 +188,7 @@ export default function App() {
         onComplete={(nextViewer) => {
           setViewer(nextViewer);
           setAccountFlow(null);
-          refreshChurchApplication();
+          void refreshChurchContext();
         }}
       />
 
@@ -521,6 +548,8 @@ function LibraryScreen({
 function ProfileScreen({
   viewer,
   churchApplication,
+  studioAccess,
+  onChurchReviewed,
   onCreateViewer,
   onLogin,
   onSignOut,
@@ -528,6 +557,8 @@ function ProfileScreen({
 }: {
   viewer: PreviewViewer | null;
   churchApplication: ChurchApplication | null;
+  studioAccess: StudioAccess;
+  onChurchReviewed: () => void;
   onCreateViewer: () => void;
   onLogin: () => void;
   onSignOut: () => void;
@@ -592,7 +623,24 @@ function ProfileScreen({
         <View style={styles.studioCloudOne} />
         <View style={styles.studioCloudTwo} />
 
-        {churchApplication ? (
+        {studioAccess.hasAccess && studioAccess.church ? (
+          <>
+            <Text style={styles.studioEyebrow}>VERIFIED CHURCH</Text>
+            <Text style={styles.studioTitle}>{studioAccess.church.name}</Text>
+            <Text style={styles.studioCopy}>
+              SermonSky Studio is unlocked. You can now manage your verified
+              church channel and, in the next publishing milestone, upload
+              sermons and Shorts.
+            </Text>
+            <View style={styles.applicationStatusPill}>
+              <Text style={styles.applicationStatusDot}>●</Text>
+              <Text style={styles.applicationStatusText}>Studio unlocked</Text>
+            </View>
+            <Text style={styles.studioNote}>
+              @{studioAccess.church.slug} · {studioAccess.church.memberRole}
+            </Text>
+          </>
+        ) : churchApplication ? (
           <>
             <Text style={styles.studioEyebrow}>APPLICATION RECEIVED</Text>
             <Text style={styles.studioTitle}>{churchApplication.churchName}</Text>
@@ -637,11 +685,7 @@ function ProfileScreen({
       </View>
 
       {viewer?.role === "admin" && (
-        <AdminReviewPanel
-          onReviewed={() => {
-            // The application card refreshes on the next session restore.
-          }}
-        />
+        <AdminReviewPanel onReviewed={onChurchReviewed} />
       )}
 
       <View style={styles.settingsList}>
