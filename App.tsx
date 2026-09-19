@@ -13,6 +13,12 @@ import {
   View,
 } from "react-native";
 import { BrandMark } from "./src/components/BrandMark";
+import {
+  ChurchApplicationModal,
+  ViewerAuthModal,
+  type ChurchApplication,
+  type PreviewViewer,
+} from "./src/components/AccountFlows";
 import { VideoCard } from "./src/components/VideoCard";
 import {
   categories,
@@ -24,6 +30,10 @@ import {
 import { colors, radii, spacing } from "./src/theme";
 
 type Tab = "Home" | "Shorts" | "Discover" | "Library" | "Profile";
+type AccountFlow =
+  | null
+  | { kind: "viewer"; mode: "signup" | "login" }
+  | { kind: "church" };
 
 const tabs: { key: Tab; glyph: string }[] = [
   { key: "Home", glyph: "⌂" },
@@ -36,6 +46,10 @@ const tabs: { key: Tab; glyph: string }[] = [
 export default function App() {
   const [tab, setTab] = useState<Tab>("Home");
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
+  const [accountFlow, setAccountFlow] = useState<AccountFlow>(null);
+  const [viewer, setViewer] = useState<PreviewViewer | null>(null);
+  const [churchApplication, setChurchApplication] =
+    useState<ChurchApplication | null>(null);
 
   return (
     <SafeAreaView style={styles.app}>
@@ -59,11 +73,45 @@ export default function App() {
             {tab === "Library" && (
               <LibraryScreen onSelectVideo={setSelectedVideo} />
             )}
-            {tab === "Profile" && <ProfileScreen />}
+            {tab === "Profile" && (
+              <ProfileScreen
+                viewer={viewer}
+                churchApplication={churchApplication}
+                onCreateViewer={() =>
+                  setAccountFlow({ kind: "viewer", mode: "signup" })
+                }
+                onLogin={() =>
+                  setAccountFlow({ kind: "viewer", mode: "login" })
+                }
+                onSignOut={() => setViewer(null)}
+                onApplyChurch={() => setAccountFlow({ kind: "church" })}
+              />
+            )}
           </View>
           <BottomNav current={tab} onChange={setTab} />
         </>
       )}
+
+      <ViewerAuthModal
+        visible={accountFlow?.kind === "viewer"}
+        mode={
+          accountFlow?.kind === "viewer" ? accountFlow.mode : "signup"
+        }
+        onClose={() => setAccountFlow(null)}
+        onComplete={(nextViewer) => {
+          setViewer(nextViewer);
+          setAccountFlow(null);
+        }}
+      />
+
+      <ChurchApplicationModal
+        visible={accountFlow?.kind === "church"}
+        onClose={() => setAccountFlow(null)}
+        onSubmit={(application) => {
+          setChurchApplication(application);
+          setAccountFlow(null);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -409,7 +457,30 @@ function LibraryScreen({
   );
 }
 
-function ProfileScreen() {
+function ProfileScreen({
+  viewer,
+  churchApplication,
+  onCreateViewer,
+  onLogin,
+  onSignOut,
+  onApplyChurch,
+}: {
+  viewer: PreviewViewer | null;
+  churchApplication: ChurchApplication | null;
+  onCreateViewer: () => void;
+  onLogin: () => void;
+  onSignOut: () => void;
+  onApplyChurch: () => void;
+}) {
+  const initials = viewer
+    ? viewer.name
+        .split(" ")
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase())
+        .join("")
+    : "SS";
+
   return (
     <ScrollView
       showsVerticalScrollIndicator={false}
@@ -422,35 +493,77 @@ function ProfileScreen() {
 
       <View style={styles.profileCard}>
         <View style={styles.profileAvatar}>
-          <Text style={styles.profileAvatarText}>SS</Text>
+          <Text style={styles.profileAvatarText}>{initials}</Text>
         </View>
-        <Text style={styles.profileTitle}>Your SermonSky</Text>
-        <Text style={styles.profileSubtitle}>
-          Follow churches, save sermons, and build a feed around your faith.
-        </Text>
-        <Pressable style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Create viewer account</Text>
-        </Pressable>
-        <Pressable style={styles.textButton}>
-          <Text style={styles.textButtonText}>I already have an account</Text>
-        </Pressable>
+
+        {viewer ? (
+          <>
+            <View style={styles.previewAccountBadge}>
+              <Text style={styles.previewAccountBadgeText}>PREVIEW ACCOUNT</Text>
+            </View>
+            <Text style={styles.profileTitle}>{viewer.name}</Text>
+            <Text style={styles.profileSubtitle}>{viewer.email}</Text>
+            <Text style={styles.profileHelperText}>
+              Your account screen is now interactive. Secure persistence and
+              real authentication are the next backend connection.
+            </Text>
+            <Pressable style={styles.signOutButton} onPress={onSignOut}>
+              <Text style={styles.signOutButtonText}>Sign out of preview</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            <Text style={styles.profileTitle}>Your SermonSky</Text>
+            <Text style={styles.profileSubtitle}>
+              Follow churches, save sermons, and build a feed around your faith.
+            </Text>
+            <Pressable style={styles.primaryButton} onPress={onCreateViewer}>
+              <Text style={styles.primaryButtonText}>Create viewer account</Text>
+            </Pressable>
+            <Pressable style={styles.textButton} onPress={onLogin}>
+              <Text style={styles.textButtonText}>I already have an account</Text>
+            </Pressable>
+          </>
+        )}
       </View>
 
       <View style={styles.studioCard}>
         <View style={styles.studioCloudOne} />
         <View style={styles.studioCloudTwo} />
-        <Text style={styles.studioEyebrow}>FOR VERIFIED CHURCHES</Text>
-        <Text style={styles.studioTitle}>SermonSky Studio</Text>
-        <Text style={styles.studioCopy}>
-          Publish sermons and Shorts, manage your church page, and understand
-          how your ministry is reaching people.
-        </Text>
-        <Pressable style={styles.studioButton}>
-          <Text style={styles.studioButtonText}>Apply for a Church Account</Text>
-        </Pressable>
-        <Text style={styles.studioNote}>
-          Uploading is restricted to approved churches and ministries.
-        </Text>
+
+        {churchApplication ? (
+          <>
+            <Text style={styles.studioEyebrow}>APPLICATION RECEIVED</Text>
+            <Text style={styles.studioTitle}>{churchApplication.churchName}</Text>
+            <Text style={styles.studioCopy}>
+              Your Church Account application is pending verification. SermonSky
+              Studio publishing remains locked until approval.
+            </Text>
+            <View style={styles.applicationStatusPill}>
+              <Text style={styles.applicationStatusDot}>●</Text>
+              <Text style={styles.applicationStatusText}>Pending review</Text>
+            </View>
+            <Text style={styles.studioNote}>
+              Representative: {churchApplication.representativeName} ·{" "}
+              {churchApplication.role}
+            </Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.studioEyebrow}>FOR VERIFIED CHURCHES</Text>
+            <Text style={styles.studioTitle}>SermonSky Studio</Text>
+            <Text style={styles.studioCopy}>
+              Publish sermons and Shorts, manage your church page, and understand
+              how your ministry is reaching people.
+            </Text>
+            <Pressable style={styles.studioButton} onPress={onApplyChurch}>
+              <Text style={styles.studioButtonText}>Apply for a Church Account</Text>
+            </Pressable>
+            <Text style={styles.studioNote}>
+              Uploading is restricted to approved churches and ministries.
+            </Text>
+          </>
+        )}
       </View>
 
       <View style={styles.settingsList}>
@@ -1426,6 +1539,62 @@ const styles = StyleSheet.create({
     color: colors.skyDark,
     fontSize: 12,
     fontWeight: "800",
+  },
+  previewAccountBadge: {
+    marginTop: 13,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: radii.pill,
+    backgroundColor: colors.mist,
+  },
+  previewAccountBadgeText: {
+    color: colors.skyDark,
+    fontSize: 9,
+    letterSpacing: 1.1,
+    fontWeight: "900",
+  },
+  profileHelperText: {
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 17,
+    textAlign: "center",
+    marginTop: 12,
+    maxWidth: 350,
+  },
+  signOutButton: {
+    marginTop: 17,
+    minHeight: 44,
+    paddingHorizontal: 18,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.line,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  signOutButtonText: {
+    color: colors.navy,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  applicationStatusPill: {
+    alignSelf: "flex-start",
+    marginTop: 18,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: radii.pill,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  applicationStatusDot: {
+    color: colors.white,
+    fontSize: 10,
+  },
+  applicationStatusText: {
+    color: colors.white,
+    fontSize: 11,
+    fontWeight: "900",
   },
   studioCard: {
     marginTop: spacing.lg,
