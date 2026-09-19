@@ -255,6 +255,7 @@ function DiscoverScreen({
   onSelectVideo: (video: Video) => void;
 }) {
   const [query, setQuery] = useState("");
+  const { width } = useWindowDimensions();
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -333,7 +334,7 @@ function DiscoverScreen({
           <VideoCard
             key={video.id}
             video={video}
-            width="100%" as never}
+            width={Math.max(width - spacing.lg * 2, 280)}}
             onPress={() => onSelectVideo(video)}
           />
         ))}
