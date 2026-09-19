@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { BrandMark } from "./src/components/BrandMark";
+import { AdminReviewPanel } from "./src/components/AdminReviewPanel";
 import {
   ChurchApplicationModal,
   ViewerAuthModal,
@@ -596,8 +597,11 @@ function ProfileScreen({
             <Text style={styles.studioEyebrow}>APPLICATION RECEIVED</Text>
             <Text style={styles.studioTitle}>{churchApplication.churchName}</Text>
             <Text style={styles.studioCopy}>
-              Your Church Account application has been received. SermonSky Studio
-              publishing remains locked until the application is approved.
+              {churchApplication.status === "approved"
+                ? "Your church is verified. SermonSky Studio publishing access is now unlocked for approved church members."
+                : churchApplication.status === "rejected"
+                  ? "This application was not approved. You can contact SermonSky support before submitting updated verification details."
+                  : "Your Church Account application has been received. SermonSky Studio publishing remains locked until the application is approved."}
             </Text>
             <View style={styles.applicationStatusPill}>
               <Text style={styles.applicationStatusDot}>●</Text>
@@ -631,6 +635,14 @@ function ProfileScreen({
           </>
         )}
       </View>
+
+      {viewer?.role === "admin" && (
+        <AdminReviewPanel
+          onReviewed={() => {
+            // The application card refreshes on the next session restore.
+          }}
+        />
+      )}
 
       <View style={styles.settingsList}>
         <SettingsRow label="Notifications" />
