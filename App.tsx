@@ -21,6 +21,7 @@ import {
   type PreviewViewer,
 } from "./src/components/AccountFlows";
 import { VideoCard } from "./src/components/VideoCard";
+import { StudioScreen } from "./src/components/StudioScreen";
 import {
   categories,
   churches,
@@ -62,6 +63,7 @@ const tabs: { key: Tab; glyph: string }[] = [
 export default function App() {
   const [tab, setTab] = useState<Tab>("Home");
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
+  const [studioOpen, setStudioOpen] = useState(false);
   const [accountFlow, setAccountFlow] = useState<AccountFlow>(null);
   const [viewer, setViewer] = useState<PreviewViewer | null>(null);
   const [churchApplication, setChurchApplication] =
@@ -137,7 +139,9 @@ export default function App() {
       <StatusBar barStyle="dark-content" backgroundColor={colors.cloud} />
       <CloudBackdrop />
 
-      {selectedVideo ? (
+      {studioOpen ? (
+        <StudioScreen onClose={() => setStudioOpen(false)} />
+      ) : selectedVideo ? (
         <VideoDetail
           video={selectedVideo}
           onBack={() => setSelectedVideo(null)}
@@ -160,6 +164,7 @@ export default function App() {
                 churchApplication={churchApplication}
                 studioAccess={studioAccess}
                 onChurchReviewed={() => void refreshChurchContext()}
+                onOpenStudio={() => setStudioOpen(true)}
                 onCreateViewer={() =>
                   setAccountFlow({ kind: "viewer", mode: "signup" })
                 }
@@ -550,6 +555,7 @@ function ProfileScreen({
   churchApplication,
   studioAccess,
   onChurchReviewed,
+  onOpenStudio,
   onCreateViewer,
   onLogin,
   onSignOut,
@@ -559,6 +565,7 @@ function ProfileScreen({
   churchApplication: ChurchApplication | null;
   studioAccess: StudioAccess;
   onChurchReviewed: () => void;
+  onOpenStudio: () => void;
   onCreateViewer: () => void;
   onLogin: () => void;
   onSignOut: () => void;
@@ -639,6 +646,9 @@ function ProfileScreen({
             <Text style={styles.studioNote}>
               @{studioAccess.church.slug} · {studioAccess.church.memberRole}
             </Text>
+            <Pressable style={styles.studioButton} onPress={onOpenStudio}>
+              <Text style={styles.studioButtonText}>Open SermonSky Studio</Text>
+            </Pressable>
           </>
         ) : churchApplication ? (
           <>
