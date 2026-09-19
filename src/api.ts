@@ -125,23 +125,32 @@ async function apiRequest<T>(
     },
   });
 
-  const payload = (await response.json().catch(() => null)) as
-    | {
-        message?: string;
-        error?: string;
-      }
-    | T
-    | null;
+  const rawBody = await response.text();
+  let payload: unknown = null;
+
+  if (rawBody) {
+    try {
+      payload = JSON.parse(rawBody);
+    } catch {
+      payload = null;
+    }
+  }
 
   if (!response.ok) {
-    const errorPayload = payload as
-      | { message?: string; error?: string }
-      | null;
+    const errorPayload =
+      payload && typeof payload === "object"
+        ? (payload as { message?: string; error?: string })
+        : null;
+
+    const platformMessage =
+      response.status >= 500 && !errorPayload?.message
+        ? `SermonSky backend returned HTTP ${response.status}. This usually means the Cloudflare Worker hit a runtime or resource error.`
+        : `SermonSky request failed (HTTP ${response.status}).`;
 
     throw new ApiError(
-      errorPayload?.message || "SermonSky could not complete that request.",
+      errorPayload?.message || platformMessage,
       response.status,
-      errorPayload?.error,
+      errorPayload?.error || "platform_error",
     );
   }
 
