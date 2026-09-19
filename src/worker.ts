@@ -50,7 +50,10 @@ type ChurchApplicationRow = {
 
 const SESSION_COOKIE = "sermonsky_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
-const PASSWORD_ITERATIONS = 120_000;
+// Development/MVP setting chosen to stay within Workers Free CPU limits.
+ // Before public production launch, move password auth to a dedicated auth
+ // provider or increase the work factor on an appropriate runtime/plan.
+const PASSWORD_ITERATIONS = 20_000;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
