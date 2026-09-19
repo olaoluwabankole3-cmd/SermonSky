@@ -77,6 +77,77 @@ npm run deploy
 
 Every push to `main` can trigger a fresh Cloudflare Worker build and deployment once Git integration is enabled.
 
+## D1 database and authentication
+
+SermonSky now contains a Worker API and D1 migration for real viewer accounts,
+server-side sessions, and persistent Church Account applications.
+
+### Create the database
+
+From a Cloudflare-authenticated terminal:
+
+```bash
+npm install
+npm run db:create
+```
+
+That command creates `sermonsky-db` and asks Wrangler to add a D1 binding named
+`DB` to `wrangler.jsonc`.
+
+Alternatively, create a D1 database named `sermonsky-db` in the Cloudflare
+dashboard, copy its database ID, and add this block to `wrangler.jsonc`:
+
+```json
+"d1_databases": [
+  {
+    "binding": "DB",
+    "database_name": "sermonsky-db",
+    "database_id": "YOUR_DATABASE_ID"
+  }
+]
+```
+
+### Apply the schema
+
+After the `DB` binding exists:
+
+```bash
+npm run db:migrate:remote
+```
+
+The migration creates:
+
+- `users`
+- `sessions`
+- `church_applications`
+
+For local development, use:
+
+```bash
+npm run db:migrate:local
+npm run preview:cf
+```
+
+### API routes
+
+The Worker currently exposes:
+
+- `GET /api/health`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+- `POST /api/church-applications`
+- `GET /api/church-applications/me`
+
+Passwords are derived with PBKDF2-SHA-256 plus a per-user random salt. Session
+tokens are stored as SHA-256 hashes in D1 and delivered to the browser through
+HttpOnly, SameSite cookies.
+
+Until the `DB` binding is connected, `GET /api/health` remains available and
+reports `database: false`; database-backed endpoints return a setup message
+instead of breaking the static SermonSky app.
+
 ## Product architecture
 
 SermonSky will eventually have three surfaces:
