@@ -46,6 +46,42 @@ npm run android
 npm run ios
 ```
 
+
+## Cloudflare Pages preview
+
+The app can be exported as a static Expo web build and deployed directly to Cloudflare Pages.
+
+Use these Cloudflare Pages settings:
+
+- **Production branch:** `main`
+- **Build command:** `npm run build:web`
+- **Build output directory:** `dist`
+- **Root directory:** leave blank / repository root
+- **Node.js:** 22.13 or newer
+
+If Cloudflare's build environment uses an older Node version, add the environment variable:
+
+```text
+NODE_VERSION=22.13.0
+```
+
+Every new commit to `main` will trigger a production deployment. Pull requests can use Cloudflare preview deployments.
+
+To test the same web build locally:
+
+```bash
+npm install
+npm run web
+```
+
+To generate the static deployment bundle locally:
+
+```bash
+npm run build:web
+```
+
+The deployable files will be written to `dist/`.
+
 ## Product architecture
 
 SermonSky will eventually have three surfaces:
