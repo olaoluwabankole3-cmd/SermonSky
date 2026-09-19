@@ -28,6 +28,26 @@ export type ChurchApplicationInput = {
   role: string;
 };
 
+export type StudioChurch = {
+  id: string;
+  name: string;
+  slug: string;
+  website: string;
+  country: string;
+  verificationStatus: "verified" | "suspended";
+  memberRole: "owner" | "admin" | "editor";
+};
+
+export type StudioAccess = {
+  hasAccess: boolean;
+  church: StudioChurch | null;
+};
+
+export type AdminChurchApplication = ChurchApplicationRecord & {
+  applicantName: string;
+  applicantEmail: string;
+};
+
 const API_BASE =
   typeof process !== "undefined" && process.env?.EXPO_PUBLIC_API_URL
     ? process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, "")
@@ -97,6 +117,40 @@ export async function getMyChurchApplication(): Promise<ChurchApplicationRecord 
     if (error instanceof ApiError && error.status === 401) return null;
     throw error;
   }
+}
+
+export async function getStudioAccess(): Promise<StudioAccess> {
+  try {
+    return await apiRequest<StudioAccess>("/api/studio/me");
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      return { hasAccess: false, church: null };
+    }
+    throw error;
+  }
+}
+
+export async function listAdminChurchApplications(): Promise<AdminChurchApplication[]> {
+  const result = await apiRequest<{
+    applications: AdminChurchApplication[];
+  }>("/api/admin/church-applications");
+  return result.applications;
+}
+
+export async function reviewChurchApplication(
+  applicationId: string,
+  action: "approve" | "reject",
+): Promise<{
+  application: ChurchApplicationRecord;
+  church?: StudioChurch;
+}> {
+  return apiRequest(
+    `/api/admin/church-applications/${encodeURIComponent(applicationId)}/review`,
+    {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    },
+  );
 }
 
 export class ApiError extends Error {
