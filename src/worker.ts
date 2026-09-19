@@ -166,10 +166,18 @@ export default {
         /^\/api\/admin\/church-applications\/([^/]+)\/review$/,
       );
       if (reviewMatch && request.method === "POST") {
+        const applicationId = reviewMatch[1];
+        if (!applicationId) {
+          return json(
+            { error: "invalid_application_id", message: "Application ID is missing." },
+            400,
+          );
+        }
+
         return reviewChurchApplication(
           request,
           env.DB,
-          decodeURIComponent(reviewMatch[1]),
+          decodeURIComponent(applicationId),
         );
       }
 
