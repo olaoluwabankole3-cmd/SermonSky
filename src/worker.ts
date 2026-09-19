@@ -517,7 +517,7 @@ async function derivePasswordHash(
     {
       name: "PBKDF2",
       hash: "SHA-256",
-      salt,
+      salt: Uint8Array.from(salt),
       iterations: PASSWORD_ITERATIONS,
     },
     material,
