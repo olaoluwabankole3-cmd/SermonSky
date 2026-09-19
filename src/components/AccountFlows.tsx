@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+  ActivityIndicator,
   Modal,
   Pressable,
   ScrollView,
@@ -8,23 +9,18 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { BrandMark } from "./BrandMark";
+import {
+  loginViewer,
+  registerViewer,
+  submitChurchApplication,
+  type ChurchApplicationRecord,
+  type ViewerSession,
+} from "../api";
 import { colors, radii, spacing } from "../theme";
+import { BrandMark } from "./BrandMark";
 
-export type PreviewViewer = {
-  name: string;
-  email: string;
-};
-
-export type ChurchApplication = {
-  churchName: string;
-  website: string;
-  country: string;
-  representativeName: string;
-  representativeEmail: string;
-  role: string;
-  status: "pending";
-};
+export type PreviewViewer = ViewerSession;
+export type ChurchApplication = ChurchApplicationRecord;
 
 type ViewerAuthModalProps = {
   visible: boolean;
@@ -44,37 +40,58 @@ export function ViewerAuthModal({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!visible) {
+      setName("");
+      setEmail("");
+      setPassword("");
+      setError("");
+      setSubmitting(false);
+    }
+  }, [visible, mode]);
 
   const canSubmit = useMemo(() => {
     const emailLooksValid = email.includes("@") && email.includes(".");
     return (
       emailLooksValid &&
-      password.length >= 6 &&
+      password.length >= 8 &&
       (!isSignup || name.trim().length >= 2)
     );
   }, [email, password, name, isSignup]);
 
-  const submit = () => {
-    if (!canSubmit) {
-      setError("Enter a valid email and a password with at least 6 characters.");
+  const submit = async () => {
+    if (!canSubmit || submitting) {
+      setError("Enter a valid email and a password with at least 8 characters.");
       return;
     }
 
-    const displayName = isSignup
-      ? name.trim()
-      : email
-          .split("@")[0]
-          .replace(/[._-]+/g, " ")
-          .replace(/\b\w/g, (letter) => letter.toUpperCase());
-
-    onComplete({
-      name: displayName || "SermonSky Viewer",
-      email: email.trim().toLowerCase(),
-    });
-    setName("");
-    setEmail("");
-    setPassword("");
+    setSubmitting(true);
     setError("");
+
+    try {
+      const viewer = isSignup
+        ? await registerViewer({
+            name: name.trim(),
+            email: email.trim(),
+            password,
+          })
+        : await loginViewer({
+            email: email.trim(),
+            password,
+          });
+
+      onComplete(viewer);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "SermonSky could not complete that request.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -88,7 +105,11 @@ export function ViewerAuthModal({
         <View style={styles.sheet}>
           <View style={styles.sheetHeader}>
             <BrandMark />
-            <Pressable accessibilityRole="button" onPress={onClose} style={styles.close}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={onClose}
+              style={styles.close}
+            >
               <Text style={styles.closeText}>×</Text>
             </Pressable>
           </View>
@@ -107,7 +128,7 @@ export function ViewerAuthModal({
             <Text style={styles.subtitle}>
               {isSignup
                 ? "Follow churches, save sermons, and build a feed around your faith."
-                : "Sign in to continue your SermonSky preview experience."}
+                : "Sign in to continue your SermonSky experience."}
             </Text>
 
             {isSignup && (
@@ -133,7 +154,7 @@ export function ViewerAuthModal({
               label="Password"
               value={password}
               onChangeText={setPassword}
-              placeholder="At least 6 characters"
+              placeholder="At least 8 characters"
               secureTextEntry
               autoCapitalize="none"
             />
@@ -141,23 +162,28 @@ export function ViewerAuthModal({
             {!!error && <Text style={styles.error}>{error}</Text>}
 
             <Pressable
-              onPress={submit}
+              disabled={!canSubmit || submitting}
+              onPress={() => void submit()}
               style={({ pressed }) => [
                 styles.primaryButton,
-                !canSubmit && styles.primaryButtonDisabled,
-                pressed && canSubmit && styles.pressed,
+                (!canSubmit || submitting) && styles.primaryButtonDisabled,
+                pressed && canSubmit && !submitting && styles.pressed,
               ]}
             >
-              <Text style={styles.primaryButtonText}>
-                {isSignup ? "Create viewer account" : "Sign in"}
-              </Text>
+              {submitting ? (
+                <ActivityIndicator color={colors.white} />
+              ) : (
+                <Text style={styles.primaryButtonText}>
+                  {isSignup ? "Create viewer account" : "Sign in"}
+                </Text>
+              )}
             </Pressable>
 
             <View style={styles.previewNotice}>
-              <Text style={styles.previewNoticeTitle}>Preview mode</Text>
+              <Text style={styles.previewNoticeTitle}>Backend connected flow</Text>
               <Text style={styles.previewNoticeText}>
-                This flow is interactive, but credentials are not sent anywhere
-                yet. Secure authentication is the next backend milestone.
+                This form now uses the SermonSky Worker API. Once the D1 binding
+                is connected, accounts and sessions persist across refreshes.
               </Text>
             </View>
           </ScrollView>
@@ -185,6 +211,8 @@ export function ChurchApplicationModal({
   const [representativeName, setRepresentativeName] = useState("");
   const [representativeEmail, setRepresentativeEmail] = useState("");
   const [role, setRole] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const stepOneValid =
     churchName.trim().length >= 2 &&
@@ -205,6 +233,8 @@ export function ChurchApplicationModal({
     setRepresentativeName("");
     setRepresentativeEmail("");
     setRole("");
+    setError("");
+    setSubmitting(false);
   };
 
   const close = () => {
@@ -212,19 +242,33 @@ export function ChurchApplicationModal({
     onClose();
   };
 
-  const submit = () => {
-    if (!stepOneValid || !stepTwoValid) return;
+  const submit = async () => {
+    if (!stepOneValid || !stepTwoValid || submitting) return;
 
-    onSubmit({
-      churchName: churchName.trim(),
-      website: website.trim(),
-      country: country.trim(),
-      representativeName: representativeName.trim(),
-      representativeEmail: representativeEmail.trim().toLowerCase(),
-      role: role.trim(),
-      status: "pending",
-    });
-    reset();
+    setSubmitting(true);
+    setError("");
+
+    try {
+      const application = await submitChurchApplication({
+        churchName: churchName.trim(),
+        website: website.trim(),
+        country: country.trim(),
+        representativeName: representativeName.trim(),
+        representativeEmail: representativeEmail.trim().toLowerCase(),
+        role: role.trim(),
+      });
+
+      onSubmit(application);
+      reset();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "SermonSky could not submit the application.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -238,7 +282,11 @@ export function ChurchApplicationModal({
         <View style={styles.sheet}>
           <View style={styles.sheetHeader}>
             <BrandMark />
-            <Pressable accessibilityRole="button" onPress={close} style={styles.close}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={close}
+              style={styles.close}
+            >
               <Text style={styles.closeText}>×</Text>
             </Pressable>
           </View>
@@ -388,12 +436,32 @@ export function ChurchApplicationModal({
                   </Text>
                 </View>
 
+                {!!error && <Text style={styles.error}>{error}</Text>}
+
                 <View style={styles.buttonRow}>
-                  <Pressable onPress={() => setStep(2)} style={styles.secondaryButton}>
+                  <Pressable
+                    disabled={submitting}
+                    onPress={() => setStep(2)}
+                    style={styles.secondaryButton}
+                  >
                     <Text style={styles.secondaryButtonText}>Back</Text>
                   </Pressable>
-                  <Pressable onPress={submit} style={[styles.primaryButton, styles.flexButton]}>
-                    <Text style={styles.primaryButtonText}>Submit application</Text>
+                  <Pressable
+                    disabled={submitting}
+                    onPress={() => void submit()}
+                    style={[
+                      styles.primaryButton,
+                      styles.flexButton,
+                      submitting && styles.primaryButtonDisabled,
+                    ]}
+                  >
+                    {submitting ? (
+                      <ActivityIndicator color={colors.white} />
+                    ) : (
+                      <Text style={styles.primaryButtonText}>
+                        Submit application
+                      </Text>
+                    )}
                   </Pressable>
                 </View>
               </>
@@ -531,6 +599,7 @@ const styles = StyleSheet.create({
   error: {
     color: "#B42318",
     fontSize: 11,
+    lineHeight: 17,
     marginTop: 10,
   },
   primaryButton: {
