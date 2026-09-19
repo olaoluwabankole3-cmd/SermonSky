@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "SermonSky",
+    "slug": "sermonsky",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "sermonsky",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F7FCFF",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sermonsky.app"
+    },
+    "android": {
+      "package": "com.sermonsky.app",
+      "edgeToEdgeEnabled": true
+    }
+  }
+}
