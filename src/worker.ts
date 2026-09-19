@@ -1,11 +1,13 @@
 type D1Statement = {
   bind: (...values: unknown[]) => D1Statement;
   first: <T = Record<string, unknown>>() => Promise<T | null>;
+  all: <T = Record<string, unknown>>() => Promise<{ results: T[] }>;
   run: () => Promise<{ success: boolean }>;
 };
 
 type D1DatabaseLike = {
   prepare: (query: string) => D1Statement;
+  batch: (statements: D1Statement[]) => Promise<unknown[]>;
 };
 
 type Env = {
@@ -46,6 +48,21 @@ type ChurchApplicationRow = {
   status: string;
   created_at: string;
   updated_at: string;
+};
+
+type AdminChurchApplicationRow = ChurchApplicationRow & {
+  applicant_name: string;
+  applicant_email: string;
+};
+
+type StudioChurchRow = {
+  id: string;
+  name: string;
+  slug: string;
+  website: string;
+  country: string;
+  verification_status: string;
+  member_role: string;
 };
 
 const SESSION_COOKIE = "sermonsky_session";
@@ -132,6 +149,28 @@ export default {
         request.method === "GET"
       ) {
         return getMyChurchApplication(request, env.DB);
+      }
+
+      if (url.pathname === "/api/studio/me" && request.method === "GET") {
+        return getStudioAccess(request, env.DB);
+      }
+
+      if (
+        url.pathname === "/api/admin/church-applications" &&
+        request.method === "GET"
+      ) {
+        return listChurchApplications(request, env.DB);
+      }
+
+      const reviewMatch = url.pathname.match(
+        /^\/api\/admin\/church-applications\/([^/]+)\/review$/,
+      );
+      if (reviewMatch && request.method === "POST") {
+        return reviewChurchApplication(
+          request,
+          env.DB,
+          decodeURIComponent(reviewMatch[1]),
+        );
       }
 
       return json({ error: "not_found", message: "API route not found." }, 404);
@@ -414,6 +453,279 @@ async function getMyChurchApplication(
   return json({
     application: application ? serializeApplication(application) : null,
   });
+}
+
+async function getStudioAccess(
+  request: Request,
+  db: D1DatabaseLike,
+) {
+  const auth = await getAuthenticatedUser(request, db);
+  if (!auth) {
+    return json({ hasAccess: false, church: null }, 401);
+  }
+
+  const church = await db
+    .prepare(
+      `SELECT
+         c.id,
+         c.name,
+         c.slug,
+         c.website,
+         c.country,
+         c.verification_status,
+         cm.member_role
+       FROM church_members cm
+       JOIN churches c ON c.id = cm.church_id
+       WHERE cm.user_id = ?
+         AND c.verification_status = 'verified'
+       LIMIT 1`,
+    )
+    .bind(auth.user.id)
+    .first<StudioChurchRow>();
+
+  return json({
+    hasAccess: Boolean(church),
+    church: church
+      ? {
+          id: church.id,
+          name: church.name,
+          slug: church.slug,
+          website: church.website,
+          country: church.country,
+          verificationStatus: church.verification_status,
+          memberRole: church.member_role,
+        }
+      : null,
+  });
+}
+
+async function listChurchApplications(
+  request: Request,
+  db: D1DatabaseLike,
+) {
+  const admin = await requireAdmin(request, db);
+  if (admin instanceof Response) return admin;
+
+  const result = await db
+    .prepare(
+      `SELECT
+         ca.id,
+         ca.user_id,
+         ca.church_name,
+         ca.website,
+         ca.country,
+         ca.representative_name,
+         ca.representative_email,
+         ca.representative_role,
+         ca.status,
+         ca.created_at,
+         ca.updated_at,
+         u.name AS applicant_name,
+         u.email AS applicant_email
+       FROM church_applications ca
+       JOIN users u ON u.id = ca.user_id
+       ORDER BY
+         CASE ca.status WHEN 'pending' THEN 0 ELSE 1 END,
+         ca.created_at ASC`,
+    )
+    .all<AdminChurchApplicationRow>();
+
+  return json({
+    applications: result.results.map((row) => ({
+      ...serializeApplication(row),
+      applicantName: row.applicant_name,
+      applicantEmail: row.applicant_email,
+    })),
+  });
+}
+
+async function reviewChurchApplication(
+  request: Request,
+  db: D1DatabaseLike,
+  applicationId: string,
+) {
+  const admin = await requireAdmin(request, db);
+  if (admin instanceof Response) return admin;
+
+  const body = await readJson(request);
+  const action = cleanString(body.action, 16);
+
+  if (action !== "approve" && action !== "reject") {
+    return json(
+      {
+        error: "invalid_review_action",
+        message: "Review action must be approve or reject.",
+      },
+      400,
+    );
+  }
+
+  const application = await db
+    .prepare(
+      `SELECT id, user_id, church_name, website, country,
+              representative_name, representative_email, representative_role,
+              status, created_at, updated_at
+       FROM church_applications WHERE id = ? LIMIT 1`,
+    )
+    .bind(applicationId)
+    .first<ChurchApplicationRow>();
+
+  if (!application) {
+    return json(
+      { error: "application_not_found", message: "Application not found." },
+      404,
+    );
+  }
+
+  const now = new Date().toISOString();
+
+  if (action === "reject") {
+    await db
+      .prepare(
+        `UPDATE church_applications
+         SET status = 'rejected', updated_at = ?
+         WHERE id = ?`,
+      )
+      .bind(now, application.id)
+      .run();
+
+    return json({
+      application: {
+        ...serializeApplication(application),
+        status: "rejected",
+        updatedAt: now,
+      },
+    });
+  }
+
+  const existingChurch = await db
+    .prepare(
+      `SELECT id, name, slug, website, country,
+              verification_status, 'owner' AS member_role
+       FROM churches
+       WHERE created_from_application_id = ?
+       LIMIT 1`,
+    )
+    .bind(application.id)
+    .first<StudioChurchRow>();
+
+  const churchId = existingChurch?.id || crypto.randomUUID();
+  const churchSlug =
+    existingChurch?.slug ||
+    makeChurchSlug(application.church_name, churchId);
+
+  const statements: D1Statement[] = [];
+
+  if (!existingChurch) {
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO churches (
+             id, name, slug, website, country, verification_status,
+             created_from_application_id, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, 'verified', ?, ?, ?)`,
+        )
+        .bind(
+          churchId,
+          application.church_name,
+          churchSlug,
+          application.website,
+          application.country,
+          application.id,
+          now,
+          now,
+        ),
+    );
+  }
+
+  statements.push(
+    db
+      .prepare(
+        `INSERT INTO church_members
+         (id, church_id, user_id, member_role, created_at)
+         VALUES (?, ?, ?, 'owner', ?)
+         ON CONFLICT(church_id, user_id) DO UPDATE SET
+           member_role = 'owner'`,
+      )
+      .bind(
+        crypto.randomUUID(),
+        churchId,
+        application.user_id,
+        now,
+      ),
+  );
+
+  statements.push(
+    db
+      .prepare(
+        `UPDATE church_applications
+         SET status = 'approved', updated_at = ?
+         WHERE id = ?`,
+      )
+      .bind(now, application.id),
+  );
+
+  await db.batch(statements);
+
+  return json({
+    application: {
+      ...serializeApplication(application),
+      status: "approved",
+      updatedAt: now,
+    },
+    church: {
+      id: churchId,
+      name: application.church_name,
+      slug: churchSlug,
+      website: application.website,
+      country: application.country,
+      verificationStatus: "verified",
+      memberRole: "owner",
+    },
+  });
+}
+
+async function requireAdmin(
+  request: Request,
+  db: D1DatabaseLike,
+): Promise<
+  | {
+      user: { id: string; name: string; email: string; role: string };
+      sessionId: string;
+    }
+  | Response
+> {
+  const auth = await getAuthenticatedUser(request, db);
+
+  if (!auth) {
+    return json(
+      { error: "authentication_required", message: "Sign in first." },
+      401,
+    );
+  }
+
+  if (auth.user.role !== "admin") {
+    return json(
+      {
+        error: "admin_required",
+        message: "SermonSky administrator access is required.",
+      },
+      403,
+    );
+  }
+
+  return auth;
+}
+
+function makeChurchSlug(name: string, id: string): string {
+  const base = name
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+
+  return `${base || "church"}-${id.replace(/-/g, "").slice(0, 6)}`;
 }
 
 async function createSessionResponse(
