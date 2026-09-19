@@ -148,6 +148,39 @@ Until the `DB` binding is connected, `GET /api/health` remains available and
 reports `database: false`; database-backed endpoints return a setup message
 instead of breaking the static SermonSky app.
 
+## SermonSky Studio
+
+Verified church members now have a dedicated Studio surface with:
+
+- Studio overview and channel-readiness checks
+- Editable verified church profile
+- Persistent sermon and Short drafts
+- Church-member permission checks on every Studio API route
+
+Studio API routes:
+
+- `GET /api/studio/me`
+- `GET /api/studio/channel`
+- `PATCH /api/studio/channel`
+- `GET /api/studio/drafts`
+- `POST /api/studio/drafts`
+- `PATCH /api/studio/drafts/:id`
+
+The Studio database migration is:
+
+```text
+migrations/0003_studio_channels_and_sermon_drafts.sql
+```
+
+Apply it to the remote D1 database before using the Studio UI:
+
+```bash
+npm run db:migrate:remote
+```
+
+The next publishing milestone will connect direct media uploads and video
+processing after draft records and church permissions are established.
+
 ## Product architecture
 
 SermonSky will eventually have three surfaces:
