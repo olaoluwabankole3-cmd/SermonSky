@@ -48,6 +48,49 @@ export type AdminChurchApplication = ChurchApplicationRecord & {
   applicantEmail: string;
 };
 
+export type StudioChannel = {
+  id: string;
+  name: string;
+  slug: string;
+  website: string;
+  country: string;
+  city: string;
+  description: string;
+  serviceTimes: string;
+  logoUrl: string;
+  bannerUrl: string;
+  verificationStatus: "verified" | "suspended";
+  memberRole: "owner" | "admin" | "editor";
+};
+
+export type StudioDraft = {
+  id: string;
+  churchId: string;
+  createdByUserId: string;
+  contentType: "sermon" | "short";
+  title: string;
+  description: string;
+  category: string;
+  scriptureReference: string;
+  status: "draft" | "ready" | "published" | "archived";
+  visibility: "public" | "unlisted" | "private";
+  videoProvider: string;
+  videoUid: string;
+  thumbnailUrl: string;
+  durationSeconds: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type StudioDraftInput = {
+  contentType?: "sermon" | "short";
+  title: string;
+  description?: string;
+  category?: string;
+  scriptureReference?: string;
+  visibility?: "public" | "unlisted" | "private";
+};
+
 const API_BASE =
   typeof process !== "undefined" && process.env?.EXPO_PUBLIC_API_URL
     ? process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, "")
@@ -128,6 +171,70 @@ export async function getStudioAccess(): Promise<StudioAccess> {
     }
     throw error;
   }
+}
+
+export async function getStudioChannel(): Promise<StudioChannel> {
+  const result = await apiRequest<{ channel: StudioChannel }>(
+    "/api/studio/channel",
+  );
+  return result.channel;
+}
+
+export async function updateStudioChannel(
+  input: Pick<
+    StudioChannel,
+    | "name"
+    | "website"
+    | "country"
+    | "city"
+    | "description"
+    | "serviceTimes"
+    | "logoUrl"
+    | "bannerUrl"
+  >,
+): Promise<StudioChannel> {
+  const result = await apiRequest<{ channel: StudioChannel }>(
+    "/api/studio/channel",
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  );
+  return result.channel;
+}
+
+export async function listStudioDrafts(): Promise<StudioDraft[]> {
+  const result = await apiRequest<{ drafts: StudioDraft[] }>(
+    "/api/studio/drafts",
+  );
+  return result.drafts;
+}
+
+export async function createStudioDraft(
+  input: StudioDraftInput,
+): Promise<StudioDraft> {
+  const result = await apiRequest<{ draft: StudioDraft }>(
+    "/api/studio/drafts",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+  return result.draft;
+}
+
+export async function updateStudioDraft(
+  draftId: string,
+  input: Partial<StudioDraftInput>,
+): Promise<StudioDraft> {
+  const result = await apiRequest<{ draft: StudioDraft }>(
+    `/api/studio/drafts/${encodeURIComponent(draftId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  );
+  return result.draft;
 }
 
 export async function listAdminChurchApplications(): Promise<AdminChurchApplication[]> {
