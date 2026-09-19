@@ -9,7 +9,9 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "build:web": "expo export --platform web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "deploy": "npm run build:web && wrangler deploy",
+    "preview:cf": "npm run build:web && wrangler dev"
   },
   "dependencies": {
     "@expo/metro-runtime": "~57.0.15",
@@ -21,7 +23,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "wrangler": "^4.135.0"
   },
   "engines": {
     "node": ">=22.13.0"
