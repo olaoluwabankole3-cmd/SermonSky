@@ -65,6 +65,33 @@ type StudioChurchRow = {
   member_role: string;
 };
 
+type StudioChannelRow = StudioChurchRow & {
+  description: string;
+  city: string;
+  service_times: string;
+  logo_url: string;
+  banner_url: string;
+};
+
+type SermonDraftRow = {
+  id: string;
+  church_id: string;
+  created_by_user_id: string;
+  content_type: string;
+  title: string;
+  description: string;
+  category: string;
+  scripture_reference: string;
+  status: string;
+  visibility: string;
+  video_provider: string;
+  video_uid: string;
+  thumbnail_url: string;
+  duration_seconds: number;
+  created_at: string;
+  updated_at: string;
+};
+
 const SESSION_COOKIE = "sermonsky_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 // Development/MVP setting chosen to stay within Workers Free CPU limits.
@@ -153,6 +180,41 @@ export default {
 
       if (url.pathname === "/api/studio/me" && request.method === "GET") {
         return getStudioAccess(request, env.DB);
+      }
+
+      if (url.pathname === "/api/studio/channel" && request.method === "GET") {
+        return getStudioChannel(request, env.DB);
+      }
+
+      if (url.pathname === "/api/studio/channel" && request.method === "PATCH") {
+        return updateStudioChannel(request, env.DB);
+      }
+
+      if (url.pathname === "/api/studio/drafts" && request.method === "GET") {
+        return listStudioDrafts(request, env.DB);
+      }
+
+      if (url.pathname === "/api/studio/drafts" && request.method === "POST") {
+        return createStudioDraft(request, env.DB);
+      }
+
+      const studioDraftMatch = url.pathname.match(
+        /^\/api\/studio\/drafts\/([^/]+)$/,
+      );
+      if (studioDraftMatch && request.method === "PATCH") {
+        const draftId = studioDraftMatch[1];
+        if (!draftId) {
+          return json(
+            { error: "invalid_draft_id", message: "Draft ID is missing." },
+            400,
+          );
+        }
+
+        return updateStudioDraft(
+          request,
+          env.DB,
+          decodeURIComponent(draftId),
+        );
       }
 
       if (
@@ -505,6 +567,327 @@ async function getStudioAccess(
         }
       : null,
   });
+}
+
+async function getStudioChannel(
+  request: Request,
+  db: D1DatabaseLike,
+) {
+  const studio = await requireStudioMember(request, db);
+  if (studio instanceof Response) return studio;
+
+  return json({ channel: serializeStudioChannel(studio.church) });
+}
+
+async function updateStudioChannel(
+  request: Request,
+  db: D1DatabaseLike,
+) {
+  const studio = await requireStudioMember(request, db);
+  if (studio instanceof Response) return studio;
+
+  if (!["owner", "admin"].includes(studio.church.member_role)) {
+    return json(
+      {
+        error: "channel_admin_required",
+        message: "Only church owners and admins can edit channel details.",
+      },
+      403,
+    );
+  }
+
+  const body = await readJson(request);
+  const name = cleanString(body.name, 120);
+  const website = cleanString(body.website, 300);
+  const country = cleanString(body.country, 80);
+  const city = cleanString(body.city, 100);
+  const description = cleanString(body.description, 1200);
+  const serviceTimes = cleanString(body.serviceTimes, 500);
+  const logoUrl = cleanString(body.logoUrl, 500);
+  const bannerUrl = cleanString(body.bannerUrl, 500);
+
+  if (name.length < 2 || website.length < 4 || country.length < 2) {
+    return json(
+      {
+        error: "invalid_channel",
+        message: "Church name, website, and country are required.",
+      },
+      400,
+    );
+  }
+
+  const now = new Date().toISOString();
+
+  await db
+    .prepare(
+      `UPDATE churches
+       SET name = ?, website = ?, country = ?, city = ?,
+           description = ?, service_times = ?, logo_url = ?,
+           banner_url = ?, updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(
+      name,
+      website,
+      country,
+      city,
+      description,
+      serviceTimes,
+      logoUrl,
+      bannerUrl,
+      now,
+      studio.church.id,
+    )
+    .run();
+
+  const channel = await getStudioChannelRow(
+    db,
+    studio.user.id,
+    studio.church.id,
+  );
+
+  return json({ channel: serializeStudioChannel(channel!) });
+}
+
+async function listStudioDrafts(
+  request: Request,
+  db: D1DatabaseLike,
+) {
+  const studio = await requireStudioMember(request, db);
+  if (studio instanceof Response) return studio;
+
+  const result = await db
+    .prepare(
+      `SELECT id, church_id, created_by_user_id, content_type, title,
+              description, category, scripture_reference, status, visibility,
+              video_provider, video_uid, thumbnail_url, duration_seconds,
+              created_at, updated_at
+       FROM sermon_drafts
+       WHERE church_id = ?
+       ORDER BY updated_at DESC`,
+    )
+    .bind(studio.church.id)
+    .all<SermonDraftRow>();
+
+  return json({
+    drafts: result.results.map(serializeDraft),
+  });
+}
+
+async function createStudioDraft(
+  request: Request,
+  db: D1DatabaseLike,
+) {
+  const studio = await requireStudioMember(request, db);
+  if (studio instanceof Response) return studio;
+
+  const body = await readJson(request);
+  const title = cleanString(body.title, 180);
+  const description = cleanString(body.description, 5000);
+  const category = cleanString(body.category, 80) || "Sermon";
+  const scriptureReference = cleanString(body.scriptureReference, 180);
+  const contentType =
+    body.contentType === "short" ? "short" : "sermon";
+  const visibility = ["public", "unlisted", "private"].includes(
+    String(body.visibility),
+  )
+    ? String(body.visibility)
+    : "public";
+
+  if (title.length < 2) {
+    return json(
+      { error: "invalid_title", message: "Add a title for this draft." },
+      400,
+    );
+  }
+
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  await db
+    .prepare(
+      `INSERT INTO sermon_drafts (
+         id, church_id, created_by_user_id, content_type, title,
+         description, category, scripture_reference, status, visibility,
+         created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)`,
+    )
+    .bind(
+      id,
+      studio.church.id,
+      studio.user.id,
+      contentType,
+      title,
+      description,
+      category,
+      scriptureReference,
+      visibility,
+      now,
+      now,
+    )
+    .run();
+
+  const draft = await getDraftById(db, studio.church.id, id);
+  return json({ draft: serializeDraft(draft!) }, 201);
+}
+
+async function updateStudioDraft(
+  request: Request,
+  db: D1DatabaseLike,
+  draftId: string,
+) {
+  const studio = await requireStudioMember(request, db);
+  if (studio instanceof Response) return studio;
+
+  const existing = await getDraftById(db, studio.church.id, draftId);
+  if (!existing) {
+    return json(
+      { error: "draft_not_found", message: "Draft not found." },
+      404,
+    );
+  }
+
+  const body = await readJson(request);
+  const title =
+    body.title === undefined
+      ? existing.title
+      : cleanString(body.title, 180);
+  const description =
+    body.description === undefined
+      ? existing.description
+      : cleanString(body.description, 5000);
+  const category =
+    body.category === undefined
+      ? existing.category
+      : cleanString(body.category, 80) || "Sermon";
+  const scriptureReference =
+    body.scriptureReference === undefined
+      ? existing.scripture_reference
+      : cleanString(body.scriptureReference, 180);
+  const contentType =
+    body.contentType === undefined
+      ? existing.content_type
+      : body.contentType === "short"
+        ? "short"
+        : "sermon";
+  const visibility =
+    body.visibility === undefined
+      ? existing.visibility
+      : ["public", "unlisted", "private"].includes(String(body.visibility))
+        ? String(body.visibility)
+        : existing.visibility;
+
+  if (title.length < 2) {
+    return json(
+      { error: "invalid_title", message: "Draft title is required." },
+      400,
+    );
+  }
+
+  const now = new Date().toISOString();
+
+  await db
+    .prepare(
+      `UPDATE sermon_drafts
+       SET content_type = ?, title = ?, description = ?, category = ?,
+           scripture_reference = ?, visibility = ?, updated_at = ?
+       WHERE id = ? AND church_id = ?`,
+    )
+    .bind(
+      contentType,
+      title,
+      description,
+      category,
+      scriptureReference,
+      visibility,
+      now,
+      draftId,
+      studio.church.id,
+    )
+    .run();
+
+  const draft = await getDraftById(db, studio.church.id, draftId);
+  return json({ draft: serializeDraft(draft!) });
+}
+
+async function requireStudioMember(
+  request: Request,
+  db: D1DatabaseLike,
+): Promise<
+  | {
+      user: { id: string; name: string; email: string; role: string };
+      church: StudioChannelRow;
+    }
+  | Response
+> {
+  const auth = await getAuthenticatedUser(request, db);
+  if (!auth) {
+    return json(
+      { error: "authentication_required", message: "Sign in first." },
+      401,
+    );
+  }
+
+  const church = await getStudioChannelRow(db, auth.user.id);
+  if (!church) {
+    return json(
+      {
+        error: "studio_access_required",
+        message: "Verified church membership is required for SermonSky Studio.",
+      },
+      403,
+    );
+  }
+
+  return { user: auth.user, church };
+}
+
+async function getStudioChannelRow(
+  db: D1DatabaseLike,
+  userId: string,
+  churchId?: string,
+): Promise<StudioChannelRow | null> {
+  const query = churchId
+    ? `SELECT c.id, c.name, c.slug, c.website, c.country,
+              c.verification_status, c.description, c.city,
+              c.service_times, c.logo_url, c.banner_url, cm.member_role
+       FROM church_members cm
+       JOIN churches c ON c.id = cm.church_id
+       WHERE cm.user_id = ? AND c.id = ?
+         AND c.verification_status = 'verified'
+       LIMIT 1`
+    : `SELECT c.id, c.name, c.slug, c.website, c.country,
+              c.verification_status, c.description, c.city,
+              c.service_times, c.logo_url, c.banner_url, cm.member_role
+       FROM church_members cm
+       JOIN churches c ON c.id = cm.church_id
+       WHERE cm.user_id = ?
+         AND c.verification_status = 'verified'
+       LIMIT 1`;
+
+  const statement = db.prepare(query);
+  return churchId
+    ? statement.bind(userId, churchId).first<StudioChannelRow>()
+    : statement.bind(userId).first<StudioChannelRow>();
+}
+
+async function getDraftById(
+  db: D1DatabaseLike,
+  churchId: string,
+  draftId: string,
+): Promise<SermonDraftRow | null> {
+  return db
+    .prepare(
+      `SELECT id, church_id, created_by_user_id, content_type, title,
+              description, category, scripture_reference, status, visibility,
+              video_provider, video_uid, thumbnail_url, duration_seconds,
+              created_at, updated_at
+       FROM sermon_drafts
+       WHERE church_id = ? AND id = ?
+       LIMIT 1`,
+    )
+    .bind(churchId, draftId)
+    .first<SermonDraftRow>();
 }
 
 async function listChurchApplications(
@@ -889,6 +1272,44 @@ function serializeApplication(row: ChurchApplicationRow) {
     representativeEmail: row.representative_email,
     role: row.representative_role,
     status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function serializeStudioChannel(row: StudioChannelRow) {
+  return {
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    website: row.website,
+    country: row.country,
+    city: row.city,
+    description: row.description,
+    serviceTimes: row.service_times,
+    logoUrl: row.logo_url,
+    bannerUrl: row.banner_url,
+    verificationStatus: row.verification_status,
+    memberRole: row.member_role,
+  };
+}
+
+function serializeDraft(row: SermonDraftRow) {
+  return {
+    id: row.id,
+    churchId: row.church_id,
+    createdByUserId: row.created_by_user_id,
+    contentType: row.content_type,
+    title: row.title,
+    description: row.description,
+    category: row.category,
+    scriptureReference: row.scripture_reference,
+    status: row.status,
+    visibility: row.visibility,
+    videoProvider: row.video_provider,
+    videoUid: row.video_uid,
+    thumbnailUrl: row.thumbnail_url,
+    durationSeconds: row.duration_seconds,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
