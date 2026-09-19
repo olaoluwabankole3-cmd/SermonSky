@@ -40,6 +40,14 @@ type AccountFlow =
   | { kind: "viewer"; mode: "signup" | "login" }
   | { kind: "church" };
 
+const absoluteFill = {
+  position: "absolute" as const,
+  top: 0,
+  right: 0,
+  bottom: 0,
+  left: 0,
+};
+
 const tabs: { key: Tab; glyph: string }[] = [
   { key: "Home", glyph: "⌂" },
   { key: "Shorts", glyph: "▶" },
@@ -856,7 +864,7 @@ function SettingsRow({ label, last = false }: { label: string; last?: boolean })
 
 function CloudBackdrop() {
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+    <View pointerEvents="none" style={absoluteFill}>
       <View style={styles.cloudOrbOne} />
       <View style={styles.cloudOrbTwo} />
       <View style={styles.cloudOrbThree} />
@@ -950,7 +958,7 @@ const styles = StyleSheet.create({
     aspectRatio: 16 / 10,
   },
   featuredScrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...absoluteFill,
     backgroundColor: "rgba(5, 33, 58, 0.26)",
   },
   featuredTopPill: {
@@ -1274,7 +1282,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.xl,
   },
   shortOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...absoluteFill,
     backgroundColor: "rgba(4,31,52,0.20)",
   },
   shortCenterCopy: {
@@ -1761,7 +1769,7 @@ const styles = StyleSheet.create({
     aspectRatio: 16 / 10,
   },
   playerScrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...absoluteFill,
     backgroundColor: "rgba(5,27,45,0.20)",
   },
   backButton: {
