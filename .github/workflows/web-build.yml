@@ -22,3 +22,6 @@ jobs:
 
       - name: Build Expo web
         run: npm run build:web
+
+      - name: Validate Worker bundle
+        run: npx wrangler deploy --dry-run
