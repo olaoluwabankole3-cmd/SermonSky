@@ -613,7 +613,7 @@ function DraftComposer({
         </View>
       </View>
 
-      {!!error && <Text style={styles.errorText}>{error}</Text>}
+      {!!error && <Text style={styles.formErrorText}>{error}</Text>}
 
       <Pressable
         disabled={title.trim().length < 2 || saving}
@@ -1277,7 +1277,7 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontSize: 21,
   },
-  errorText: {
+  formErrorText: {
     color: "#B42318",
     fontSize: 11,
     lineHeight: 17,
