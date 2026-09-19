@@ -10,14 +10,12 @@
       "/api/*"
     ],
     "not_found_handling": "single-page-application"
-  }
-
-  // After creating the D1 database, Wrangler will add:
-  // "d1_databases": [
-  //   {
-  //     "binding": "DB",
-  //     "database_name": "sermonsky-db",
-  //     "database_id": "<your-database-id>"
-  //   }
-  // ]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sermonsky-db",
+      "database_id": "e0bfb134-5283-41a8-b4e5-3f9967e1246d"
+    }
+  ]
 }
