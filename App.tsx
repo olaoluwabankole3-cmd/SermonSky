@@ -334,7 +334,7 @@ function DiscoverScreen({
           <VideoCard
             key={video.id}
             video={video}
-            width={Math.max(width - spacing.lg * 2, 280)}}
+            width={Math.max(width - spacing.lg * 2, 280)}
             onPress={() => onSelectVideo(video)}
           />
         ))}
