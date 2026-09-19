@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Image,
   ImageBackground,
@@ -27,6 +27,11 @@ import {
   type Video,
   videos,
 } from "./src/data/mock";
+import {
+  getCurrentViewer,
+  getMyChurchApplication,
+  logoutViewer,
+} from "./src/api";
 import { colors, radii, spacing } from "./src/theme";
 
 type Tab = "Home" | "Shorts" | "Discover" | "Library" | "Profile";
@@ -50,6 +55,48 @@ export default function App() {
   const [viewer, setViewer] = useState<PreviewViewer | null>(null);
   const [churchApplication, setChurchApplication] =
     useState<ChurchApplication | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const restoreSession = async () => {
+      try {
+        const currentViewer = await getCurrentViewer();
+        if (cancelled) return;
+
+        setViewer(currentViewer);
+
+        if (currentViewer) {
+          const application = await getMyChurchApplication();
+          if (!cancelled) setChurchApplication(application);
+        }
+      } catch {
+        if (!cancelled) {
+          setViewer(null);
+          setChurchApplication(null);
+        }
+      }
+    };
+
+    void restoreSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const refreshChurchApplication = () => {
+    void getMyChurchApplication()
+      .then((application) => setChurchApplication(application))
+      .catch(() => setChurchApplication(null));
+  };
+
+  const signOut = () => {
+    void logoutViewer().finally(() => {
+      setViewer(null);
+      setChurchApplication(null);
+    });
+  };
 
   return (
     <SafeAreaView style={styles.app}>
@@ -83,8 +130,12 @@ export default function App() {
                 onLogin={() =>
                   setAccountFlow({ kind: "viewer", mode: "login" })
                 }
-                onSignOut={() => setViewer(null)}
-                onApplyChurch={() => setAccountFlow({ kind: "church" })}
+                onSignOut={signOut}
+                onApplyChurch={() =>
+                  viewer
+                    ? setAccountFlow({ kind: "church" })
+                    : setAccountFlow({ kind: "viewer", mode: "signup" })
+                }
               />
             )}
           </View>
@@ -101,6 +152,7 @@ export default function App() {
         onComplete={(nextViewer) => {
           setViewer(nextViewer);
           setAccountFlow(null);
+          refreshChurchApplication();
         }}
       />
 
@@ -499,16 +551,16 @@ function ProfileScreen({
         {viewer ? (
           <>
             <View style={styles.previewAccountBadge}>
-              <Text style={styles.previewAccountBadgeText}>PREVIEW ACCOUNT</Text>
+              <Text style={styles.previewAccountBadgeText}>VIEWER ACCOUNT</Text>
             </View>
             <Text style={styles.profileTitle}>{viewer.name}</Text>
             <Text style={styles.profileSubtitle}>{viewer.email}</Text>
             <Text style={styles.profileHelperText}>
-              Your account screen is now interactive. Secure persistence and
-              real authentication are the next backend connection.
+              Your account is connected to the SermonSky session API and will
+              persist across refreshes once D1 is bound.
             </Text>
             <Pressable style={styles.signOutButton} onPress={onSignOut}>
-              <Text style={styles.signOutButtonText}>Sign out of preview</Text>
+              <Text style={styles.signOutButtonText}>Sign out</Text>
             </Pressable>
           </>
         ) : (
@@ -536,12 +588,18 @@ function ProfileScreen({
             <Text style={styles.studioEyebrow}>APPLICATION RECEIVED</Text>
             <Text style={styles.studioTitle}>{churchApplication.churchName}</Text>
             <Text style={styles.studioCopy}>
-              Your Church Account application is pending verification. SermonSky
-              Studio publishing remains locked until approval.
+              Your Church Account application has been received. SermonSky Studio
+              publishing remains locked until the application is approved.
             </Text>
             <View style={styles.applicationStatusPill}>
               <Text style={styles.applicationStatusDot}>●</Text>
-              <Text style={styles.applicationStatusText}>Pending review</Text>
+              <Text style={styles.applicationStatusText}>
+                {churchApplication.status === "pending"
+                  ? "Pending review"
+                  : churchApplication.status === "approved"
+                    ? "Approved"
+                    : "Needs review"}
+              </Text>
             </View>
             <Text style={styles.studioNote}>
               Representative: {churchApplication.representativeName} ·{" "}
