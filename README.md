@@ -47,40 +47,35 @@ npm run ios
 ```
 
 
-## Cloudflare Pages preview
+## Cloudflare Workers preview
 
-The app can be exported as a static Expo web build and deployed directly to Cloudflare Pages.
+SermonSky is configured for **Cloudflare Workers Static Assets**.
 
-Use these Cloudflare Pages settings:
+Use these settings in **Workers & Pages → SermonSky → Settings → Builds**:
 
 - **Production branch:** `main`
 - **Build command:** `npm run build:web`
-- **Build output directory:** `dist`
-- **Root directory:** leave blank / repository root
+- **Deploy command:** `npx wrangler deploy`
+- **Root directory:** `/`
 - **Node.js:** 22.13 or newer
 
-If Cloudflare's build environment uses an older Node version, add the environment variable:
+The Expo web export is written to `dist/`, and `wrangler.jsonc` serves that directory as a single-page application.
 
-```text
-NODE_VERSION=22.13.0
-```
-
-Every new commit to `main` will trigger a production deployment. Pull requests can use Cloudflare preview deployments.
-
-To test the same web build locally:
+To run the same flow locally:
 
 ```bash
 npm install
-npm run web
+npm run build:web
+npx wrangler dev
 ```
 
-To generate the static deployment bundle locally:
+To deploy manually:
 
 ```bash
-npm run build:web
+npm run deploy
 ```
 
-The deployable files will be written to `dist/`.
+Every push to `main` can trigger a fresh Cloudflare Worker build and deployment once Git integration is enabled.
 
 ## Product architecture
 
